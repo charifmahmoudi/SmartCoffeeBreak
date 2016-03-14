@@ -1,0 +1,129 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link rel="stylesheet" href="http://code.jquery.com/mobile/1.4.5/jquery.mobile-1.4.5.min.css">
+  <script src="http://code.jquery.com/jquery-1.11.3.min.js"></script>
+  <script src="http://code.jquery.com/mobile/1.4.5/jquery.mobile-1.4.5.min.js"></script>
+  <script src="https://www.eclipse.org/paho/clients/js/src/mqttws31.js"></script>
+  <meta charset=utf-8 />
+  <title>Smart Coffee Maker</title>
+  <script type="text/javascript">
+    var mqtt;
+    var reconnectTimeout = 2000;
+    var host = "broker.getstructure.io";
+    var port = 443;
+    var clientID = "YOUR-DEVICE-ID";
+    var username = "YOUR-ACCESS-KEY";
+    var password = "YOUR-ACCESS-SECRET";
+    var commandtopic = "structure/"+clientID+"/command";
+    var statetopic = "structure/"+clientID+"/state";
+    var useTLS = true;
+    var cleansessionmqtt = true;
+//
+
+
+    function MQTTconnect() {
+      mqtt = new Paho.MQTT.Client(
+        host,
+        port,
+        clientID);
+      var options = {
+
+        timeout: 5,
+        useSSL: useTLS,
+        cleanSession: cleansessionmqtt,
+        onSuccess: onConnect,
+        onFailure: function (message) {
+          $('#status').val("Connection failed: " + JSON.stringify(message) + "Retrying");
+          console.log("Connection failed: " + JSON.stringify(message) + "Retrying");
+          setTimeout(MQTTconnect, reconnectTimeout);
+        }
+      };
+
+      mqtt.onConnectionLost = onConnectionLost;
+      mqtt.onMessageArrived = onMessageArrived;
+
+      if (username != null) {
+        options.userName = username;
+        options.password = password;
+      }
+
+      console.log("Host="+ host + ", port=" + port + " TLS = " + useTLS + " username=" + username + " password=" + password);
+      mqtt.connect(options);
+    }
+
+    function onConnect() {
+      $('#status').val('Connected to ' + host + ':' + port);
+      console.log('Connected to ' + host + ':' + port);
+      // Connection succeeded; subscribe to our topic
+      mqtt.subscribe(commandtopic, {qos: 0});
+
+    }
+
+
+
+    function onConnectionLost(response) {
+      setTimeout(MQTTconnect, reconnectTimeout);
+      $('#status').val("connection lost: " + JSON.stringify(response) + ". Reconnecting");
+      console.log("connection lost: " + JSON.stringify(response) + ". Reconnecting");
+
+    };
+
+    function onMessageArrived(message) {
+
+      var topic = message.destinationName;
+      var payload = message.payloadString;
+      console.log('Received ' + payload);
+      var obj = JSON.parse(payload);
+      var currentdate = new Date();
+      var datetime = currentdate.getHours() + ":"
+        + currentdate.getMinutes() + ":"
+        + currentdate.getSeconds();
+      $('#ws').prepend('<li>' + obj.payload.msg + ' @ ' + datetime + '</li>');
+    };
+
+
+    $(document).ready(function() {
+
+    });
+
+    $(document).on('pagecreate','#makepage', function(e){
+      MQTTconnect();
+      $("#coffee").click(function (e) {
+        //$.mobile.changePage('#p2', { transition: "flip"} );
+        var payload = { data : {coffee: "make"}};
+        var str= JSON.stringify(payload);
+        var message = new Paho.MQTT.Message(str);
+        message.destinationName = statetopic;
+        message.qos = 0;
+        mqtt.send(message);
+        console.log("Message sent " + str + ' to ' + statetopic);
+      });
+    });
+  </script>
+
+</head>
+<body>
+
+<div data-role="page"  id="makepage">
+  <div data-role="header">
+    <h1>Coffee Maker</h1>
+  </div>
+
+  <div data-role="main" class="ui-content">
+    <p>Social coffee break</p>
+    <input type="button" value="Make Coffee" id="coffee">
+    <div>
+      Status: <input type='text' id='status' size="80" disabled />
+    </div>
+  </div>
+
+  <div data-role="footer">
+    <h1>Received Messages</h1>
+    <ul id='ws' style="font-family: 'Courier New', Courier, monospace;"></ul>
+  </div>
+</div>
+
+</body>
+</html>
